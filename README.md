@@ -75,6 +75,7 @@ El archivo JSON define el nombre de la lista, el comportamiento de repeticion co
       "title": "Video de Demostracion",
       "local_path": "media/demo.mp4",
       "remote_url": "https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_16x9/bipbop_16x9_variant.m3u8",
+      "download_url": "https://storage.proveedor-cloud.example.com/demo.mp4",
       "duration": 60.0,
       "metadata": {
         "categoria": "destacado",
@@ -90,6 +91,7 @@ Campos de cada elemento:
 - title: Titulo descriptivo del video (obligatorio).
 - local_path: Ruta en el sistema de archivos local hacia el video descargado (opcional).
 - remote_url: URL de transmision remota desde el servicio de transcodificacion o streaming (opcional).
+- download_url: URL directa para la descarga del archivo original al almacenamiento local (opcional).
 - duration: Duracion nominal en segundos (opcional).
 - metadata: Objeto libre con informacion contextual adicional (opcional).
 
@@ -119,6 +121,7 @@ python3 -m molcajete_player.main examples/sample_playlist.json --sink fakesink
 
 Opciones adicionales:
 - --loop: Fuerza la reproduccion ciclica indefinida de la lista.
+- --no-download: Desactiva la descarga automatica en segundo plano de los archivos multimedia.
 - -v, --verbose: Activa trazas detalladas de depuracion del bus de GStreamer.
 
 ## Estructura del Proyecto
@@ -131,17 +134,21 @@ molcajete-player/
   README.md
   examples/
     sample_playlist.json
+    test_stream.json
   src/
     molcajete_player/
       __init__.py
       main.py
       models.py
       loader.py
+      downloader.py
       player.py
   tests/
     __init__.py
     test_models.py
     test_loader.py
+    test_player.py
+    test_downloader.py
 ```
 
 ## Ejecucion de Pruebas

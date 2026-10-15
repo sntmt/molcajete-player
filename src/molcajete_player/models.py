@@ -10,6 +10,7 @@ class MediaItem:
     id: str
     title: str
     remote_url: Optional[str] = None
+    download_url: Optional[str] = None
     local_path: Optional[str] = None
     duration: Optional[float] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -36,6 +37,21 @@ class MediaItem:
             f"El elemento multimedia '{self.id}' no dispone de local_path ni remote_url valido."
         )
 
+    def get_download_url(self) -> Optional[str]:
+        """Obtiene la URL directa de descarga del archivo original.
+
+        Prioriza 'download_url'. Si no esta presente pero 'remote_url'
+        apunta a un archivo directamente descargable (no manifiesto .m3u8),
+        se recurre a 'remote_url'.
+        """
+        if self.download_url:
+            return self.download_url
+
+        if self.remote_url and not self.remote_url.lower().endswith(".m3u8"):
+            return self.remote_url
+
+        return None
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "MediaItem":
         if "id" not in data or "title" not in data:
@@ -45,6 +61,7 @@ class MediaItem:
             id=str(data["id"]),
             title=str(data["title"]),
             remote_url=data.get("remote_url"),
+            download_url=data.get("download_url"),
             local_path=data.get("local_path"),
             duration=float(data["duration"]) if data.get("duration") is not None else None,
             metadata=data.get("metadata", {}),
@@ -55,6 +72,7 @@ class MediaItem:
             "id": self.id,
             "title": self.title,
             "remote_url": self.remote_url,
+            "download_url": self.download_url,
             "local_path": self.local_path,
             "duration": self.duration,
             "metadata": self.metadata,

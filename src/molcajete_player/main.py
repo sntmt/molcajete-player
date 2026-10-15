@@ -24,6 +24,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Salida de video: 'auto' (interfaz grafica automatica), 'gtk' (ventana nativa Gtk), 'kms' (DRM directo sin X11/Wayland), 'fbdev' (framebuffer) o 'fakesink' (modo headless).",
     )
     parser.add_argument(
+        "--no-download",
+        action="store_true",
+        help="Desactiva la descarga automatica en segundo plano de los archivos multimedia.",
+    )
+    parser.add_argument(
         "--loop",
         action="store_true",
         help="Fuerza la reproduccion continua en bucle de toda la lista.",
@@ -61,15 +66,20 @@ def main() -> int:
         return 1
 
     logging.info(
-        "Lista cargada: '%s' con %d elementos (bucle: %s). Salida: %s",
+        "Lista cargada: '%s' con %d elementos (bucle: %s). Salida: %s. Descarga en segundo plano: %s",
         playlist.name,
         len(playlist.items),
         playlist.loop,
         args.sink,
+        not args.no_download,
     )
 
     try:
-        player = MolcajetePlayer(playlist=playlist, sink_type=args.sink)
+        player = MolcajetePlayer(
+            playlist=playlist,
+            sink_type=args.sink,
+            enable_download=not args.no_download,
+        )
     except RuntimeError as exc:
         logging.error("No se pudo iniciar el reproductor GStreamer: %s", exc)
         return 2

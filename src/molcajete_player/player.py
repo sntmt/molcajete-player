@@ -5,6 +5,7 @@ import sys
 import threading
 from typing import Any, Callable, Optional
 
+from molcajete_player.downloader import AssetDownloader
 from molcajete_player.models import MediaItem, Playlist
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,8 @@ class MolcajetePlayer:
         sink_type: str = "auto",
         on_eos: Optional[Callable[[], None]] = None,
         on_error: Optional[Callable[[str], None]] = None,
+        enable_download: bool = True,
+        downloader: Optional[AssetDownloader] = None,
     ):
         """Inicializa el reproductor con una lista y el tipo de salida de video configurado.
 
@@ -55,6 +58,8 @@ class MolcajetePlayer:
                        'fakesink': sin salida visual, util para entornos headless o pruebas.
             on_eos: Callback opcional al finalizar la lista de reproduccion.
             on_error: Callback opcional al producirse un error en el bus.
+            enable_download: Activa la descarga automatica en segundo plano a disco local.
+            downloader: Instancia opcional personalizada de AssetDownloader.
         """
         if not GST_AVAILABLE:
             raise RuntimeError(
@@ -69,6 +74,17 @@ class MolcajetePlayer:
         self.sink_type = sink_type.lower()
         self.on_eos_callback = on_eos
         self.on_error_callback = on_error
+
+        self._previously_remote_items: set[str] = set()
+
+        if downloader is not None:
+            self.downloader: Optional[AssetDownloader] = downloader
+        elif enable_download:
+            self.downloader = AssetDownloader(
+                on_item_downloaded=self._on_asset_downloaded,
+            )
+        else:
+            self.downloader = None
 
         self.current_index = 0
         self.pipeline: Optional[Gst.Element] = None
@@ -183,6 +199,16 @@ class MolcajetePlayer:
             logger.info("Fin de la lista alcanzado tras fallo de reproduccion.")
             self.stop()
 
+    def _on_asset_downloaded(self, item: MediaItem, path: Path) -> None:
+        """Notifica cuando un elemento termina de descargarse con exito."""
+        logger.info(
+            "[CAMBIO A RECURSO LOCAL DISPONIBLE] Descarga de '%s' (%s) finalizada con exito en: %s. "
+            "Se conmutara al archivo local en su siguiente reproduccion.",
+            item.title,
+            item.id,
+            path,
+        )
+
     def play_item_at_index(self, index: int) -> bool:
         """Establece y reproduce el elemento correspondiente al indice indicado."""
         if not self.playlist.items:
@@ -206,14 +232,30 @@ class MolcajetePlayer:
                 self._handle_error(msg)
             return False
 
-        logger.info(
-            "Reproduciendo elemento [%d/%d] '%s' (%s) -> URI: %s",
-            self.current_index + 1,
-            len(self.playlist.items),
-            item.title,
-            item.id,
-            uri,
-        )
+        is_local = uri.startswith("file://")
+        if is_local:
+            if item.id in self._previously_remote_items:
+                logger.info(
+                    "[CONMUTACION A LOCAL] Conmutando a recurso local para '%s' (%s) tras descarga completada.",
+                    item.title,
+                    item.id,
+                )
+                self._previously_remote_items.discard(item.id)
+
+            logger.info(
+                "[REPRODUCIENDO LOCAL] Reproduciendo desde archivo local: '%s' (%s) -> URI: %s",
+                item.title,
+                item.id,
+                uri,
+            )
+        else:
+            self._previously_remote_items.add(item.id)
+            logger.info(
+                "[REPRODUCIENDO STREAMING] Reproduciendo desde streaming: '%s' (%s) -> URI: %s",
+                item.title,
+                item.id,
+                uri,
+            )
 
         if self._window is not None and hasattr(self._window, "set_title"):
             self._window.set_title(f"Molcajete Player - {item.title}")
@@ -251,6 +293,9 @@ class MolcajetePlayer:
 
     def stop(self) -> None:
         """Detiene la reproduccion y libera recursos de la tuberia."""
+        if self.downloader:
+            self.downloader.stop()
+
         if self.pipeline:
             self.pipeline.set_state(Gst.State.NULL)
 
@@ -294,6 +339,9 @@ class MolcajetePlayer:
     def run(self) -> None:
         """Ejecuta el bucle de eventos de la aplicacion de forma bloqueante."""
         self._is_running = True
+
+        if self.downloader:
+            self.downloader.start_downloads_for_playlist(self.playlist)
 
         if self._use_gtk and GTK_AVAILABLE and self.video_sink and hasattr(self.video_sink.props, "widget"):
             Gtk.init([])
