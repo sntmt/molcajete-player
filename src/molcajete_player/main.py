@@ -19,9 +19,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--sink",
-        choices=["auto", "kms", "fbdev", "fakesink"],
+        choices=["auto", "gtk", "kms", "fbdev", "fakesink"],
         default="auto",
-        help="Salida de video: 'auto' (interfaz grafica local), 'kms' (DRM directo sin X11/Wayland), 'fbdev' (framebuffer) o 'fakesink' (modo headless).",
+        help="Salida de video: 'auto' (interfaz grafica automatica), 'gtk' (ventana nativa Gtk), 'kms' (DRM directo sin X11/Wayland), 'fbdev' (framebuffer) o 'fakesink' (modo headless).",
     )
     parser.add_argument(
         "--loop",
@@ -79,6 +79,10 @@ def main() -> int:
     except Exception as exc:
         logging.error("Error durante la ejecucion del reproductor: %s", exc)
         return 3
+
+    if player.has_fatal_error:
+        logging.error("La reproduccion se detuvo porque ningun elemento de la lista pudo reproducirse.")
+        return 4
 
     return 0
 

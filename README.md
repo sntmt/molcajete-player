@@ -74,7 +74,7 @@ El archivo JSON define el nombre de la lista, el comportamiento de repeticion co
       "id": "item-001",
       "title": "Video de Demostracion",
       "local_path": "media/demo.mp4",
-      "remote_url": "https://stream.proveedor-cloud.example.com/demo.m3u8",
+      "remote_url": "https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_16x9/bipbop_16x9_variant.m3u8",
       "duration": 60.0,
       "metadata": {
         "categoria": "destacado",
