@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "molcajete-player"
+version = "0.1.0"
+description = "Reproductor audiovisual orquestado en Python sobre GStreamer para Linux"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Molcajete Team" }
+]
+dependencies = [
+    "PyGObject>=3.42.0",
+    "pydantic>=2.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.4.0"
+]
+
+[project.scripts]
+molcajete-player = "molcajete_player.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

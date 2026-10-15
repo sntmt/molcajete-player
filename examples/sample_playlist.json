@@ -1,0 +1,42 @@
+{
+  "name": "Lista de Reproduccion de Demostracion",
+  "loop": true,
+  "items": [
+    {
+      "id": "clip-001",
+      "title": "Video de Introduccion",
+      "local_path": "media/intro.mp4",
+      "remote_url": "https://stream.provider.example.com/videos/intro.m3u8",
+      "duration": 45.0,
+      "metadata": {
+        "aspect_ratio": "16:9",
+        "audio_language": "es",
+        "category": "promo"
+      }
+    },
+    {
+      "id": "clip-002",
+      "title": "Segmento Principal",
+      "local_path": "media/segment_1.mp4",
+      "remote_url": "https://stream.provider.example.com/videos/segment_1.m3u8",
+      "duration": 180.5,
+      "metadata": {
+        "aspect_ratio": "16:9",
+        "audio_language": "es",
+        "category": "feature"
+      }
+    },
+    {
+      "id": "clip-003",
+      "title": "Cortinilla de Cierre",
+      "local_path": "media/closing.mp4",
+      "remote_url": "https://stream.provider.example.com/videos/closing.m3u8",
+      "duration": 15.0,
+      "metadata": {
+        "aspect_ratio": "16:9",
+        "audio_language": "es",
+        "category": "outro"
+      }
+    }
+  ]
+}
