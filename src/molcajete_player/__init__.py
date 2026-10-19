@@ -1,6 +1,6 @@
 """Molcajete Player
 
-Reproductor de contenido audiovisual orquestado con Python y GStreamer.
+Reproductor de video (sin audio) orquestado con Python y GStreamer.
 """
 
 __version__ = "0.1.0"

@@ -1,2 +1,4 @@
+# PyGObject se recomienda instalarlo con el gestor de paquetes del sistema
+# (python3-gi) y crear el venv con --system-site-packages. Si pip lo compila desde
+# fuente necesitara libgirepository1.0-dev, libcairo2-dev y pkg-config.
 PyGObject>=3.42.0
-pydantic>=2.0.0

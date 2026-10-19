@@ -3,39 +3,42 @@
   "loop": true,
   "items": [
     {
-      "id": "clip-001",
-      "title": "Video de Introduccion",
-      "local_path": "media/intro.mp4",
-      "remote_url": "https://stream.provider.example.com/videos/intro.m3u8",
-      "duration": 45.0,
+      "id": "flower-540p",
+      "title": "Flor en Timelapse 960x540 (5s)",
+      "remote_url": "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+      "s3_url": "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=demo1",
+      "sha256": "0cd83d944a6ca7822b4a8306cecc60a36e859b041f6702c6a1ad9ead78924451",
+      "duration": 5.055,
       "metadata": {
         "aspect_ratio": "16:9",
-        "audio_language": "es",
-        "category": "promo"
+        "resolution": "960x540",
+        "source": "MDN cc0-videos (CC0)"
       }
     },
     {
-      "id": "clip-002",
-      "title": "Segmento Principal",
-      "local_path": "media/segment_1.mp4",
-      "remote_url": "https://stream.provider.example.com/videos/segment_1.m3u8",
-      "duration": 180.5,
+      "id": "jellyfish-720p",
+      "title": "Jellyfish 1280x720 (10s)",
+      "remote_url": "https://test-videos.co.uk/vids/jellyfish/mp4/h264/720/Jellyfish_720_10s_1MB.mp4",
+      "s3_url": "https://test-videos.co.uk/vids/jellyfish/mp4/h264/720/Jellyfish_720_10s_1MB.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=demo2",
+      "sha256": "245730569c806849a3c2b942cbe31056efc76f32fd8bee79780986e19c9a6057",
+      "duration": 10.011,
       "metadata": {
         "aspect_ratio": "16:9",
-        "audio_language": "es",
-        "category": "feature"
+        "resolution": "1280x720",
+        "source": "test-videos.co.uk"
       }
     },
     {
-      "id": "clip-003",
-      "title": "Cortinilla de Cierre",
-      "local_path": "media/closing.mp4",
-      "remote_url": "https://stream.provider.example.com/videos/closing.m3u8",
-      "duration": 15.0,
+      "id": "jellyfish-1080p",
+      "title": "Jellyfish 1920x1080 (10s)",
+      "remote_url": "https://test-videos.co.uk/vids/jellyfish/mp4/h264/1080/Jellyfish_1080_10s_1MB.mp4",
+      "s3_url": "https://test-videos.co.uk/vids/jellyfish/mp4/h264/1080/Jellyfish_1080_10s_1MB.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=demo3",
+      "sha256": "3762782efe41aa95912ac91dd04433942a3bd96f71f30e8d430aaaf8e9a0bd12",
+      "duration": 10.011,
       "metadata": {
         "aspect_ratio": "16:9",
-        "audio_language": "es",
-        "category": "outro"
+        "resolution": "1920x1080",
+        "source": "test-videos.co.uk"
       }
     }
   ]
