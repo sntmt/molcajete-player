@@ -38,6 +38,7 @@ class TestCLIAndRunScript(unittest.TestCase):
         self.assertFalse(args.clean_cache)
         self.assertTrue(args.prune_cache)
         self.assertTrue(args.prefetch_next)
+        self.assertFalse(args.allow_insecure_http)
         self.assertFalse(args.verbose)
 
     def test_build_parser_custom_options(self):
@@ -102,6 +103,18 @@ class TestCLIAndRunScript(unittest.TestCase):
         self.assertTrue(mock_player_cls.call_args.kwargs["prune_cache"])
         self.assertNotIn("audio", mock_player_cls.call_args.kwargs)
         self.assertTrue(mock_player_cls.call_args.kwargs["prefetch_next"])
+
+    @patch("molcajete_player.main.MolcajetePlayer")
+    def test_main_requires_https_downloads_by_default(self, mock_player_cls):
+        mock_player_cls.return_value.has_fatal_error = False
+        self.run_main(self.sample_path)
+        self.assertFalse(mock_player_cls.call_args.kwargs["downloader"].allow_insecure_http)
+
+    @patch("molcajete_player.main.MolcajetePlayer")
+    def test_main_allow_insecure_http_reaches_the_downloader(self, mock_player_cls):
+        mock_player_cls.return_value.has_fatal_error = False
+        self.run_main(self.sample_path, "--allow-insecure-http")
+        self.assertTrue(mock_player_cls.call_args.kwargs["downloader"].allow_insecure_http)
 
     @patch("molcajete_player.main.MolcajetePlayer")
     def test_main_no_prefetch_flag(self, mock_player_cls):

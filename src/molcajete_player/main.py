@@ -75,6 +75,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="No inicia por adelantado la descarga del s3_url del siguiente elemento.",
     )
     parser.add_argument(
+        "--allow-insecure-http",
+        action="store_true",
+        help=(
+            "Solo desarrollo: acepta descargas por http:// hacia cualquier host (p. ej. el Storage local "
+            "visto desde un contenedor, http://host.docker.internal). En produccion las descargas son siempre https."
+        ),
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -122,7 +130,9 @@ def main() -> int:
         args.sink,
     )
 
-    downloader = MediaDownloader(cache_dir=args.cache_dir)
+    if args.allow_insecure_http:
+        logging.warning("Descargas por http:// permitidas (--allow-insecure-http): solo para desarrollo.")
+    downloader = MediaDownloader(cache_dir=args.cache_dir, allow_insecure_http=args.allow_insecure_http)
     if args.clean_cache:
         removed = downloader.clear_cache()
         logging.info("Cache limpiada: %d archivos eliminados de %s.", removed, downloader.cache_dir)

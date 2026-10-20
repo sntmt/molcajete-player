@@ -223,6 +223,7 @@ python3 -m molcajete_player.main examples/sample_playlist.json --sink fakesink
 - `--no-prune-cache`: No elimina al arrancar los *renditions* en cache que ya no pertenecen a la lista (util si varias listas comparten el mismo directorio de cache).
 - `--media-root DIR`: Exige que todos los `local_path` del JSON queden dentro de `DIR`.
 - `--no-prefetch`: No inicia por adelantado la descarga del `s3_url` del siguiente elemento.
+- `--allow-insecure-http`: **Solo desarrollo.** Acepta descargas por `http://` hacia cualquier host (por ejemplo el Storage local visto desde el contenedor del dispositivo simulado, `http://host.docker.internal:54321`). Sin esta opcion solo se admite `https://` (y `http://` hacia loopback), tambien en cada redireccion; en produccion no se usa.
 - `-v, --verbose`: Activa trazas detalladas de depuracion (`DEBUG`), incluyendo el progreso de *buffering* y cambios de estado de la tuberia GStreamer.
 
 ### Codigos de Salida
