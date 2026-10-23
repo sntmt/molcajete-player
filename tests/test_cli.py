@@ -178,3 +178,55 @@ class TestCLIAndRunScript(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestContractModeCLI(unittest.TestCase):
+    """Sin archivo de metadatos, el reproductor arranca con el entorno que le da el agente (ADR 0015)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.app_data = Path(self._tmp.name) / "app"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def contract_env(self, **extra):
+        env = {
+            "MOLCAJETE_APP_CONTRACT": "1",
+            "MOLCAJETE_APP_DATA": str(self.app_data),
+            "MOLCAJETE_VIDEO_OUTPUT": "fakesink",
+        }
+        env.update(extra)
+        return env
+
+    def run_main(self, env, *argv):
+        clean = {k: v for k, v in os.environ.items() if not k.startswith("MOLCAJETE_APP") and k != "MOLCAJETE_VIDEO_OUTPUT"}
+        with patch("sys.argv", ["molcajete-player", *argv]), patch.dict(os.environ, {**clean, **env}, clear=True):
+            return main()
+
+    @patch("molcajete_player.main.player_module")
+    @patch("molcajete_player.main.MolcajetePlayer")
+    def test_starts_with_the_agent_environment_and_no_options(self, mock_player_cls, mock_player_module):
+        exit_code = self.run_main(self.contract_env(MOLCAJETE_DEV_INSECURE_HTTP="1"))
+
+        self.assertEqual(exit_code, 0)
+        kwargs = mock_player_cls.call_args.kwargs
+        self.assertEqual(kwargs["sink_type"], "fakesink")
+        self.assertTrue(kwargs["keep_alive"])
+        # Arranca sin lista: limpiar la cache contra ella borraria lo descargado.
+        self.assertFalse(kwargs["prune_cache"])
+        self.assertEqual(kwargs["playlist"].items, [])
+        self.assertEqual(kwargs["downloader"].cache_dir, (self.app_data / "cache").resolve())
+        self.assertTrue(kwargs["downloader"].allow_insecure_http)
+        start, schedule = mock_player_module.GLib.idle_add.call_args.args
+        self.assertEqual(start.__name__, "start")
+        self.assertIs(schedule, mock_player_module.GLib.timeout_add)
+        mock_player_cls.return_value.run.assert_called_once()
+
+    def test_an_unknown_contract_version_does_not_start(self):
+        self.assertEqual(self.run_main(self.contract_env(MOLCAJETE_APP_CONTRACT="9")), 1)
+
+    def test_without_metadata_or_agent_environment_it_is_a_usage_error(self):
+        with self.assertRaises(SystemExit) as raised:
+            self.run_main({})
+        self.assertEqual(raised.exception.code, 2)

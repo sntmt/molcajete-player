@@ -38,7 +38,9 @@ El reproductor esta disenado para cubrir tanto entornos de desarrollo local como
 | `src/molcajete_player/loader.py` | `load_playlist_from_file()` (con `media_root` opcional) y `load_playlist_from_string()`. `load_playlist_from_json()` se mantiene por compatibilidad. |
 | `src/molcajete_player/downloader.py` | `MediaDownloader`: descarga cada `s3_url` en un hilo *daemon* (`s3-downloader-<id>`) con reintentos, verificacion SHA-256 en vuelo, limites de tamano/espacio y reemplazo atomico `.part` -> destino. Expone `prepare()`, `discard_cached()`, `prune_cache()`, `clear_cache()`, `resume()` y `stop()`. `validate_download_url()` exige HTTPS, tambien en cada redireccion. |
 | `src/molcajete_player/player.py` | `MolcajetePlayer`: tuberia `playbin` sin audio, seleccion del sumidero de video, ventana Gtk persistente, precarga sin huecos (`about-to-finish` + `STREAM_START`), bus de mensajes (EOS, errores, buffering), navegacion de la lista y cierre ordenado ante senales. |
-| `src/molcajete_player/main.py` | CLI (`build_parser()`, `main()`) y codigos de salida. |
+| `src/molcajete_player/contract.py` | Contrato con el agente del dispositivo (sin GStreamer): `ContractEnv` (entorno `MOLCAJETE_APP_*`), `program_to_playlist()` (traduce y valida el programa de la plataforma), lectura de `control.json`, formato de `status.json` y escritura atomica. |
+| `src/molcajete_player/controller.py` | `ContractController`: vigila cada segundo `program.json` y `control.json`, aplica los cambios en el reproductor y mantiene `status.json`. |
+| `src/molcajete_player/main.py` | CLI (`build_parser()`, `main()`), modo contrato (`run_contract()`) y codigos de salida. |
 
 ### Modelo de hilos
 - **Hilo principal**: ejecuta el bucle de eventos (`Gtk.main()` o `GLib.MainLoop`). Todos los mensajes del bus de GStreamer, los cambios de elemento y los callbacks `on_eos`/`on_error`/`on_item_start` se procesan aqui.
@@ -215,7 +217,7 @@ python3 -m molcajete_player.main examples/sample_playlist.json --sink fakesink
 ```
 
 ### Opciones de CLI
-- `metadata`: Ruta al archivo JSON con los metadatos y la lista de reproduccion.
+- `metadata`: Ruta al archivo JSON con los metadatos y la lista de reproduccion. Sin ella, el reproductor arranca en [modo contrato con el agente](#modo-contrato-con-el-agente-del-dispositivo).
 - `--sink {auto,gtk,kms,fbdev,fakesink}`: Selecciona el sumidero de video (`auto` por defecto).
 - `--loop` / `--no-loop`: Fuerza o desactiva la reproduccion ciclica de la lista, sobreescribiendo el valor del JSON (sin ninguno de los dos se respeta el JSON).
 - `--cache-dir RUTA`: Directorio aislado de cache donde almacenar y verificar los *renditions* descargados desde S3 (por defecto `~/.cache/molcajete-player/media` o el valor de la variable de entorno `MOLCAJETE_CACHE_DIR`).
@@ -231,7 +233,52 @@ python3 -m molcajete_player.main examples/sample_playlist.json --sink fakesink
 - `1`: Archivo JSON no encontrado, con formato/estructura invalida o con un `local_path` fuera de `--media-root`.
 - `2`: GStreamer no disponible en el entorno o error al inicializar la tuberia.
 - `3`: Error inesperado durante la ejecucion del bucle principal (se registra el *traceback* completo).
-- `4`: Error fatal de reproduccion (todos los elementos de la lista fallaron consecutivamente).
+- `4`: Error fatal de reproduccion (todos los elementos de la lista fallaron consecutivamente). En modo contrato no ocurre: el reproductor espera y reintenta.
+
+## Modo contrato con el agente del dispositivo
+
+En el dispositivo, el reproductor no lo lanza una persona sino el **agente** (el programa que habla con la plataforma). El agente no sabe nada del reproductor: lo arranca **sin opciones**, con un entorno estandar, y se comunican por tres ficheros JSON en una carpeta (decision ADR 0015 de `molcajete-ng`). Asi el reproductor se puede actualizar sin tocar el agente.
+
+Sin archivo de metadatos y con este entorno, `molcajete-player` arranca en modo contrato:
+
+| Variable | Que es |
+| :--- | :--- |
+| `MOLCAJETE_APP_CONTRACT` | Version del contrato. Hoy `1`; con otra, el reproductor no arranca (codigo `1`). |
+| `MOLCAJETE_APP_DATA` | Su carpeta: los ficheros del contrato y la cache de videos (`cache/`). |
+| `MOLCAJETE_VIDEO_OUTPUT` | Salida de video que elige el agente: `kms`, `gtk` o `fakesink` (otro valor: `auto`). |
+| `MOLCAJETE_DEV_INSECURE_HTTP` | Solo desarrollo, `1`: admite descargas por `http://` (el Storage local). |
+
+Ficheros (todos se escriben de forma atomica: temporal en la misma carpeta y `rename`):
+
+- **`program.json`** (lo escribe el agente): el programa **tal cual llega de la plataforma**, `{"program_hash", "manifest": {"version": 2, "clips": [{"clip_id", "title", "stream_url", "download_url", "duration_s"}]}}`. El reproductor lo traduce a su lista (en bucle) y lo valida: version de manifiesto soportada, URLs `https` (`http` solo con `MOLCAJETE_DEV_INSECURE_HTTP`), `clip_id` unicos, al menos una URL por clip, `duration_s` positiva, y **nunca** toma una ruta local de la plataforma. Si lo cambia el agente, el reproductor pasa al programa nuevo **sin reiniciarse** (de momento corta el video en curso); si lo rechaza, **sigue con el anterior**.
+- **`control.json`** (lo escribe el agente): `{"playback": "playing" | "paused"}`. Sin fichero, `playing`.
+- **`status.json`** (lo escribe el reproductor): lo que hace de verdad, y lo unico que el agente informa a la plataforma:
+
+```json
+{
+  "program_hash": "prog-2",
+  "error": {"program_hash": "prog-3", "reason": "clips[0].stream_url must be a https URL."},
+  "playback": "playing",
+  "updated_at": "2026-10-23T14:07:09+00:00"
+}
+```
+
+`program_hash` es el programa que se esta reproduciendo; `error` (o `null`) dice que programa posterior se rechazo y por que; `playback` es `playing`, `paused` o `null` (sin programa, programa vacio o todos los elementos fallando). Se reescribe al cambiar algo y, como latido, cada 30 s.
+
+En este modo el reproductor **no se cierra** porque fallen todos los elementos: espera 30 s y lo vuelve a intentar (si se cerrara, el agente lo relanzaria en bucle). Tampoco limpia la cache al arrancar: arranca sin lista y el programa llega despues, asi que la limpieza borraria todo lo descargado.
+
+Probarlo a mano (con `fakesink`; el "agente" eres tu escribiendo los ficheros):
+
+```bash
+mkdir -p /tmp/app && cat > /tmp/app/program.json <<'JSON'
+{"program_hash": "demo", "manifest": {"version": 2, "clips": [
+  {"clip_id": 1, "title": "Flor", "stream_url": "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"}]}}
+JSON
+MOLCAJETE_APP_CONTRACT=1 MOLCAJETE_APP_DATA=/tmp/app MOLCAJETE_VIDEO_OUTPUT=fakesink \
+  PYTHONPATH=src python3 -m molcajete_player.main &
+cat /tmp/app/status.json                                   # program_hash "demo", playback "playing"
+echo '{"playback": "paused"}' > /tmp/app/control.json      # al segundo, playback "paused"
+```
 
 ## Simulacion End-to-End (Stream Mux -> S3 -> Disco Local)
 

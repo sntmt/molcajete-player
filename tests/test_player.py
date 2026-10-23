@@ -561,3 +561,82 @@ class TestStreamToDiskSwitch(_GstTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestContractMode(_GstTestCase):
+    """Lo que necesita el contrato con el agente: cambiar de lista en marcha, no cerrarse y decir que hace."""
+
+    def setUp(self):
+        super().setUp()
+        self.item1 = MediaItem(id="i1", title="Item 1", remote_url="https://example.com/1.m3u8")
+        self.item2 = MediaItem(id="i2", title="Item 2", remote_url="https://example.com/2.m3u8")
+
+    def _player(self, items=(), keep_alive=True):
+        return _make_player(Playlist(name="p", loop=True, items=list(items)), downloader=MagicMock(), keep_alive=keep_alive)
+
+    def test_load_playlist_starts_the_new_list_from_the_first_item(self):
+        player = self._player([self.item1])
+        with patch.object(player, "play_item_at_index", return_value=True) as play:
+            player.load_playlist(Playlist(name="nueva", loop=True, items=[self.item2, self.item1]))
+        play.assert_called_once_with(0)
+        self.assertEqual(player.playlist.name, "nueva")
+
+    def test_load_playlist_while_paused_waits_for_resume(self):
+        player = self._player([self.item1])
+        player.pause()
+        with patch.object(player, "play_item_at_index") as play:
+            player.load_playlist(Playlist(name="nueva", loop=True, items=[self.item2]))
+        play.assert_not_called()
+        self.assertEqual(player.playback_state(), "paused")
+
+    def test_an_empty_list_leaves_nothing_playing(self):
+        player = self._player([self.item1])
+        player.load_playlist(Playlist(name="vacia", loop=True, items=[]))
+        player.pipeline.set_state.assert_called_with(Gst.State.NULL)
+        self.assertIsNone(player.playback_state())
+
+    def test_playback_state_reflects_what_is_happening(self):
+        player = self._player()
+        self.assertIsNone(player.playback_state())  # sin lista
+        player.load_playlist(Playlist(name="p", loop=True, items=[self.item1]))
+        self.assertEqual(player.playback_state(), "playing")
+        player.pause()
+        self.assertEqual(player.playback_state(), "paused")
+        player.play()
+        self.assertEqual(player.playback_state(), "playing")
+
+    def test_pause_without_items_is_only_remembered(self):
+        player = self._player()
+        player.pause()
+        player.pipeline.set_state.assert_not_called()
+
+    def test_with_keep_alive_it_does_not_stop_when_every_item_fails_and_retries_later(self):
+        player = self._player([self.item1, self.item2])
+        player._consecutive_errors = 1
+        with patch("molcajete_player.player.GLib") as glib, patch.object(player, "stop") as stop:
+            glib.timeout_add_seconds.return_value = 99
+            player._handle_error("fallo")
+        stop.assert_not_called()
+        self.assertTrue(player.has_fatal_error)
+        self.assertIsNone(player.playback_state())
+        glib.timeout_add_seconds.assert_called_once_with(MolcajetePlayer.FATAL_RETRY_SECONDS, player._retry_after_fatal)
+
+        player._target_state = Gst.State.PLAYING
+        with patch.object(player, "play_item_at_index", return_value=True) as play:
+            self.assertFalse(player._retry_after_fatal())
+        play.assert_called_once_with(0)
+        self.assertFalse(player.has_fatal_error)
+
+    def test_without_keep_alive_it_still_stops_when_every_item_fails(self):
+        player = self._player([self.item1], keep_alive=False)
+        with patch.object(player, "stop") as stop:
+            player._handle_error("fallo")
+        stop.assert_called_once()
+
+    def test_a_new_list_cancels_the_pending_retry(self):
+        player = self._player([self.item1])
+        player._fatal_retry_source = 7
+        with patch("molcajete_player.player.GLib") as glib, patch.object(player, "play_item_at_index", return_value=True):
+            player.load_playlist(Playlist(name="nueva", loop=True, items=[self.item2]))
+        glib.source_remove.assert_called_once_with(7)
+        self.assertIsNone(player._fatal_retry_source)

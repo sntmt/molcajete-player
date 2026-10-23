@@ -124,6 +124,7 @@ class MolcajetePlayer:
         prune_cache: bool = True,
         prefetch_next: bool = True,
         on_item_start: Optional[Callable[[int, MediaItem, str], None]] = None,
+        keep_alive: bool = False,
     ):
         """Inicializa el reproductor con una lista y el tipo de salida de video configurado.
 
@@ -149,11 +150,15 @@ class MolcajetePlayer:
             on_item_start: Callback ``(index, item, uri)`` invocado en el bucle principal
                 cada vez que un elemento empieza a mostrarse, tanto por cambio sin huecos
                 como por ``play_item_at_index``.
+            keep_alive: Si es True (modo contrato con el agente), el reproductor no se cierra
+                cuando fallan todos los elementos o se acaba la lista: espera y lo vuelve a
+                intentar, y admite listas nuevas con ``load_playlist``. Si se cerrara, el agente
+                lo relanzaria en bucle.
         """
         if not GST_AVAILABLE:
             raise RuntimeError(
-                f"GStreamer no se encuentra disponible en este entorno: {_GST_IMPORT_ERROR}. "
-                "Verifique la instalacion de PyGObject y las librerias del sistema."
+                f"GStreamer is not available in this environment: {_GST_IMPORT_ERROR}. "
+                "Check the PyGObject installation and the system libraries."
             )
 
         if not Gst.is_initialized():
@@ -167,6 +172,8 @@ class MolcajetePlayer:
         self.prune_cache = prune_cache
         self.prefetch_next = prefetch_next
         self.on_item_start_callback = on_item_start
+        self.keep_alive = keep_alive
+        self._fatal_retry_source: Optional[int] = None
         self.downloader = (
             downloader if downloader is not None else MediaDownloader(cache_dir=cache_dir)
         )
@@ -200,7 +207,7 @@ class MolcajetePlayer:
         for item in self.playlist.items:
             if not item.has_immediate_source():
                 logger.warning(
-                    "El elemento '%s' solo tiene s3_url: no podra reproducirse hasta que termine su descarga.",
+                    "Item '%s' only has s3_url: it cannot play until its download finishes.",
                     item.id,
                 )
 
@@ -262,7 +269,7 @@ class MolcajetePlayer:
         """Configura la tuberia playbin y conecta los manejadores del bus de mensajes."""
         self.pipeline = Gst.ElementFactory.make("playbin", "molcajete-playbin")
         if not self.pipeline:
-            raise RuntimeError("No se pudo crear el elemento 'playbin' de GStreamer.")
+            raise RuntimeError("Could not create the GStreamer 'playbin' element.")
 
         # El reproductor nunca emite sonido.
         self._disable_audio()
@@ -311,7 +318,7 @@ class MolcajetePlayer:
         """Procesa mensajes emitidos por el bus de GStreamer."""
         t = message.type
         if t == Gst.MessageType.EOS:
-            logger.info("Fin de reproduccion alcanzado (EOS).")
+            logger.info("End of stream reached (EOS).")
             self._handle_eos()
         elif t == Gst.MessageType.ERROR:
             err, debug = message.parse_error()
@@ -320,8 +327,8 @@ class MolcajetePlayer:
                 if 0 <= self.current_index < len(self.playlist.items)
                 else None
             )
-            item_desc = f"'{current_item.title}' ({current_item.id})" if current_item else "desconocido"
-            msg = redact_urls_in_text(f"Error en elemento {item_desc}: {err.message}. Detalle: {debug}")
+            item_desc = f"'{current_item.title}' ({current_item.id})" if current_item else "unknown"
+            msg = redact_urls_in_text(f"Error in item {item_desc}: {err.message}. Details: {debug}")
             logger.error(msg)
             self._handle_error(msg)
         elif t == Gst.MessageType.BUFFERING:
@@ -331,7 +338,7 @@ class MolcajetePlayer:
         elif t == Gst.MessageType.STATE_CHANGED:
             if message.src == self.pipeline:
                 old_state, new_state, _ = message.parse_state_changed()
-                logger.debug("Cambio de estado en tuberia: %s -> %s", old_state.value_name, new_state.value_name)
+                logger.debug("Pipeline state change: %s -> %s", old_state.value_name, new_state.value_name)
                 if new_state == Gst.State.PLAYING:
                     self._consecutive_errors = 0
 
@@ -342,7 +349,7 @@ class MolcajetePlayer:
         """
         if self._is_live:
             return
-        logger.debug("Almacenando bufer de transmision de red: %d%%", percent)
+        logger.debug("Buffering network stream: %d%%", percent)
         with self._pending_lock:
             transition_pending = bool(self._pending)
         if transition_pending and percent < 100:
@@ -390,13 +397,13 @@ class MolcajetePlayer:
             try:
                 uri = item.get_effective_uri()
             except ValueError as exc:
-                logger.warning("Se omite '%s' en la precarga: %s", item.id, exc)
+                logger.warning("Skipping '%s' in preload: %s", item.id, exc)
                 idx = self._next_index(idx)
                 continue
             with self._pending_lock:
                 self._pending.append((idx, uri))
             playbin.set_property("uri", uri)
-            logger.info("Precargando siguiente elemento '%s' -> %s", item.id, redact_url_for_log(uri))
+            logger.info("Preloading next item '%s' -> %s", item.id, redact_url_for_log(uri))
             return
 
     def _on_stream_start(self) -> None:
@@ -416,7 +423,7 @@ class MolcajetePlayer:
         """Registra el elemento que empieza a mostrarse e inicia sus descargas en segundo plano."""
         item = self.playlist.items[index]
         logger.info(
-            "Reproduciendo elemento [%d/%d] '%s' (%s) -> URI: %s",
+            "Playing item [%d/%d] '%s' (%s) -> URI: %s",
             index + 1,
             len(self.playlist.items),
             item.title,
@@ -449,8 +456,11 @@ class MolcajetePlayer:
         self._consecutive_errors = 0
         next_idx = self._next_index()
         if next_idx is None:
-            logger.info("Lista de reproduccion completada.")
-            self.stop()
+            logger.info("Playlist finished.")
+            if self.keep_alive:
+                self._idle_pipeline()
+            else:
+                self.stop()
             if self.on_eos_callback:
                 self.on_eos_callback()
             return
@@ -469,22 +479,28 @@ class MolcajetePlayer:
         total_items = len(self.playlist.items)
         if total_items == 0 or self._consecutive_errors >= total_items:
             logger.critical(
-                "Todos los elementos de la lista de reproduccion (%d) fallaron consecutivamente. "
-                "Deteniendo reproductor para evitar un bucle indefinido de errores.",
+                "All playlist items (%d) failed in a row. "
+                "Stopping playback to avoid an endless error loop.",
                 total_items,
             )
             self.has_fatal_error = True
-            self.stop()
+            if self.keep_alive:
+                self._idle_until_retry()
+            else:
+                self.stop()
             return
 
         next_idx = self._next_index()
         if next_idx is None:
-            logger.info("Fin de la lista alcanzado tras fallo de reproduccion.")
-            self.stop()
+            logger.info("End of the playlist reached after a playback failure.")
+            if self.keep_alive:
+                self._idle_pipeline()
+            else:
+                self.stop()
             return
 
         logger.warning(
-            "Fallo en el elemento actual (%d/%d fallos consecutivos). Pasando al siguiente elemento...",
+            "Current item failed (%d/%d consecutive failures). Moving to the next item...",
             self._consecutive_errors,
             total_items,
         )
@@ -495,6 +511,68 @@ class MolcajetePlayer:
         logger.error(error_message)
         GLib.idle_add(self._handle_error, error_message)
 
+    # Tras fallar todos los elementos en modo keep_alive, se vuelve a intentar pasado este tiempo.
+    FATAL_RETRY_SECONDS = 30
+
+    def _idle_pipeline(self) -> None:
+        """Deja la tuberia parada sin salir del bucle de eventos (modo keep_alive)."""
+        with self._pending_lock:
+            self._pending.clear()
+            self._awaiting_initial_stream_start = False
+        if self.pipeline:
+            self.pipeline.set_state(Gst.State.NULL)
+
+    def _idle_until_retry(self) -> None:
+        self._idle_pipeline()
+        self._cancel_fatal_retry()
+        logger.warning("Retrying the playlist in %d s.", self.FATAL_RETRY_SECONDS)
+        self._fatal_retry_source = GLib.timeout_add_seconds(self.FATAL_RETRY_SECONDS, self._retry_after_fatal)
+
+    def _cancel_fatal_retry(self) -> None:
+        if self._fatal_retry_source is not None:
+            GLib.source_remove(self._fatal_retry_source)
+            self._fatal_retry_source = None
+
+    def _retry_after_fatal(self) -> bool:
+        self._fatal_retry_source = None
+        self._consecutive_errors = 0
+        self.has_fatal_error = False
+        if self._target_state != Gst.State.PAUSED and self.playlist.items:
+            self.play_item_at_index(0)
+        return False
+
+    def load_playlist(self, playlist: Playlist) -> None:
+        """Cambia la lista en marcha, sin salir ni reiniciar el proceso.
+
+        Empieza por el primer elemento; si se habia pedido pausa, queda en pausa y empezara al
+        reanudar. Lo ya descargado en la cache se conserva. De momento el cambio corta el
+        elemento en curso (cambiar sin cortarlo es otra tarea).
+        """
+        self._cancel_fatal_retry()
+        paused = self._target_state == Gst.State.PAUSED
+        self.playlist = playlist
+        self.current_index = 0
+        self._consecutive_errors = 0
+        self.has_fatal_error = False
+        if not playlist.items:
+            logger.info("Empty playlist: nothing to play.")
+            self._idle_pipeline()
+            return
+        if paused:
+            self._idle_pipeline()
+            return
+        self.play_item_at_index(0)
+
+    def playback_state(self) -> Optional[str]:
+        """Lo que hace de verdad: ``playing``, ``paused`` o ``None`` (nada que reproducir o todo fallando)."""
+        if self._stopped or self.has_fatal_error or not self.playlist.items:
+            return None
+        if self._target_state == Gst.State.PAUSED:
+            return "paused"
+        if self._target_state == Gst.State.PLAYING:
+            return "playing"
+        return None
+
     def play_item_at_index(self, index: int) -> bool:
         """Establece y reproduce el elemento correspondiente al indice indicado.
 
@@ -504,7 +582,7 @@ class MolcajetePlayer:
             programo en ``_handle_error``, que avanzara al siguiente elemento.
         """
         if not self.playlist.items:
-            logger.warning("La lista de reproduccion no contiene elementos.")
+            logger.warning("The playlist has no items.")
             return False
 
         if index < 0 or index >= len(self.playlist.items):
@@ -523,7 +601,7 @@ class MolcajetePlayer:
         try:
             uri = item.get_effective_uri()
         except ValueError as exc:
-            self._schedule_error(f"No se pudo obtener la URI para el elemento '{item.id}': {exc}")
+            self._schedule_error(f"Could not get the URI for item '{item.id}': {exc}")
             return False
 
         self._announce_item(index, uri)
@@ -539,7 +617,7 @@ class MolcajetePlayer:
         self._is_live = state_ret == Gst.StateChangeReturn.NO_PREROLL
         if state_ret == Gst.StateChangeReturn.FAILURE:
             self._schedule_error(
-                f"Fallo al cambiar la tuberia al estado PLAYING para el elemento '{item.id}'."
+                f"Failed to set the pipeline to PLAYING for item '{item.id}'."
             )
             return False
 
@@ -561,10 +639,11 @@ class MolcajetePlayer:
         return self.play_item_at_index(self.current_index)
 
     def pause(self) -> None:
-        """Pausa la reproduccion actual."""
+        """Pausa la reproduccion actual (sin elementos, solo se recuerda para cuando lleguen)."""
         if self.pipeline:
             self._target_state = Gst.State.PAUSED
-            self.pipeline.set_state(Gst.State.PAUSED)
+            if self.playlist.items and not self.has_fatal_error:
+                self.pipeline.set_state(Gst.State.PAUSED)
 
     def stop(self) -> None:
         """Detiene la reproduccion y libera recursos de la tuberia.
@@ -575,6 +654,7 @@ class MolcajetePlayer:
         """
         self._stopped = True
         self._target_state = Gst.State.NULL
+        self._cancel_fatal_retry()
         with self._pending_lock:
             self._pending.clear()
             self._awaiting_initial_stream_start = False
@@ -629,7 +709,7 @@ class MolcajetePlayer:
 
     def _fallback_to_autovideosink(self) -> None:
         """Abandona la ventana Gtk persistente y deja que GStreamer elija su propia salida."""
-        logger.warning("No se pudo obtener el XID de la ventana Gtk; se usara autovideosink.")
+        logger.warning("Could not get the Gtk window XID; using autovideosink.")
         window = self._window
         self._window = None
         self._drawing_area = None
@@ -687,7 +767,7 @@ class MolcajetePlayer:
         return False
 
     def _on_shutdown_signal(self, signame: str) -> bool:
-        logger.info("Senal %s recibida. Deteniendo reproductor...", signame)
+        logger.info("Signal %s received. Stopping the player...", signame)
         self.stop()
         return False
 
@@ -730,7 +810,7 @@ class MolcajetePlayer:
                 self.play()
                 self.loop.run()
         except KeyboardInterrupt:
-            logger.info("Interrupcion por teclado detectada. Deteniendo reproductor...")
+            logger.info("Keyboard interrupt. Stopping the player...")
         finally:
             self._remove_signal_handlers()
             self.stop()
