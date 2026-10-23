@@ -50,6 +50,15 @@ class TestContractEnv(unittest.TestCase):
         self.assertEqual(env.sink_type, "kms")
         self.assertTrue(env.dev_insecure_http)
 
+    def test_the_agent_inbox_can_be_a_separate_folder(self):
+        env = ContractEnv.from_environ(
+            {"MOLCAJETE_APP_CONTRACT": "1", "MOLCAJETE_APP_DATA": "/data/app/player", "MOLCAJETE_APP_INBOX": "/data/app/player-inbox"}
+        )
+        self.assertEqual(env.program_path, Path("/data/app/player-inbox/program.json"))
+        self.assertEqual(env.control_path, Path("/data/app/player-inbox/control.json"))
+        self.assertEqual(env.status_path, Path("/data/app/player/status.json"))
+        self.assertEqual(env.cache_dir, Path("/data/app/player/cache"))
+
     def test_an_unknown_video_output_falls_back_to_auto(self):
         env = ContractEnv.from_environ({"MOLCAJETE_APP_CONTRACT": "1", "MOLCAJETE_APP_DATA": "/d"})
         self.assertEqual(env.sink_type, "auto")

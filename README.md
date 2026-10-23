@@ -244,11 +244,12 @@ Sin archivo de metadatos y con este entorno, `molcajete-player` arranca en modo 
 | Variable | Que es |
 | :--- | :--- |
 | `MOLCAJETE_APP_CONTRACT` | Version del contrato. Hoy `1`; con otra, el reproductor no arranca (codigo `1`). |
-| `MOLCAJETE_APP_DATA` | Su carpeta: los ficheros del contrato y la cache de videos (`cache/`). |
+| `MOLCAJETE_APP_DATA` | Su carpeta (la escribe el reproductor): `status.json` y la cache de videos (`cache/`). |
+| `MOLCAJETE_APP_INBOX` | Carpeta de entrada (solo la escribe el agente; el reproductor solo la lee): `program.json` y `control.json`. Sin ella, van en `MOLCAJETE_APP_DATA`. |
 | `MOLCAJETE_VIDEO_OUTPUT` | Salida de video que elige el agente: `kms`, `gtk` o `fakesink` (otro valor: `auto`). |
 | `MOLCAJETE_DEV_INSECURE_HTTP` | Solo desarrollo, `1`: admite descargas por `http://` (el Storage local). |
 
-Ficheros (todos se escriben de forma atomica: temporal en la misma carpeta y `rename`):
+Ficheros del contrato (todos se escriben de forma atomica: temporal en la misma carpeta y `rename`):
 
 - **`program.json`** (lo escribe el agente): el programa **tal cual llega de la plataforma**, `{"program_hash", "manifest": {"version": 2, "clips": [{"clip_id", "title", "stream_url", "download_url", "duration_s"}]}}`. El reproductor lo traduce a su lista (en bucle) y lo valida: version de manifiesto soportada, URLs `https` (`http` solo con `MOLCAJETE_DEV_INSECURE_HTTP`), `clip_id` unicos, al menos una URL por clip, `duration_s` positiva, y **nunca** toma una ruta local de la plataforma. Si lo cambia el agente, el reproductor pasa al programa nuevo **sin reiniciarse** (de momento corta el video en curso); si lo rechaza, **sigue con el anterior**.
 - **`control.json`** (lo escribe el agente): `{"playback": "playing" | "paused"}`. Sin fichero, `playing`.

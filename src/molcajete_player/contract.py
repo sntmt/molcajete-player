@@ -40,19 +40,24 @@ class ProgramError(ValueError):
 
 @dataclass(frozen=True)
 class ContractEnv:
-    """Lo que el agente nos da al arrancar: carpeta de datos, salida de video y, en desarrollo, si se admite http."""
+    """Lo que el agente nos da al arrancar: carpetas, salida de video y, en desarrollo, si se admite http.
+
+    ``inbox`` es donde el agente deja ``program.json`` y ``control.json`` (solo el la escribe; nosotros solo
+    leemos); ``app_data`` es nuestra (``status.json`` y la cache). Sin ``inbox``, todo va en ``app_data``.
+    """
 
     app_data: Path
     video_output: str
     dev_insecure_http: bool = False
+    inbox: Optional[Path] = None
 
     @property
     def program_path(self) -> Path:
-        return self.app_data / PROGRAM_FILE
+        return (self.inbox or self.app_data) / PROGRAM_FILE
 
     @property
     def control_path(self) -> Path:
-        return self.app_data / CONTROL_FILE
+        return (self.inbox or self.app_data) / CONTROL_FILE
 
     @property
     def status_path(self) -> Path:
@@ -81,10 +86,12 @@ class ContractEnv:
             raise ContractError(f"Unsupported contract version: {version!r} (expected {CONTRACT_VERSION!r}).")
         if not app_data:
             raise ContractError("MOLCAJETE_APP_DATA is missing.")
+        inbox = environ.get("MOLCAJETE_APP_INBOX")
         return cls(
             app_data=Path(app_data),
             video_output=environ.get("MOLCAJETE_VIDEO_OUTPUT", ""),
             dev_insecure_http=environ.get("MOLCAJETE_DEV_INSECURE_HTTP") == "1",
+            inbox=Path(inbox) if inbox else None,
         )
 
 
