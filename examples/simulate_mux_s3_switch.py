@@ -72,7 +72,7 @@ def run_simulation(sink_type: str = "auto") -> int:
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    logger = logging.getLogger("simulacion")
+    logger = logging.getLogger("simulation")
 
     with tempfile.TemporaryDirectory(prefix="molcajete_sim_") as tmpdir:
         tmp_path = Path(tmpdir)
@@ -84,7 +84,7 @@ def run_simulation(sink_type: str = "auto") -> int:
         mux_video = server_dir / "mux_stream.mp4"
         s3_video = server_dir / "s3_rendition.mp4"
 
-        logger.info("Generando videos de prueba con GStreamer (~3s cada uno)...")
+        logger.info("Generating test videos with GStreamer (~3s each)...")
         generate_test_mp4(mux_video, pattern="smpte", num_buffers=90)
         generate_test_mp4(s3_video, pattern="ball", num_buffers=90)
         s3_sha256 = hashlib.sha256(s3_video.read_bytes()).hexdigest()
@@ -150,12 +150,12 @@ def run_simulation(sink_type: str = "auto") -> int:
 
         def on_item_start(index: int, started_item: MediaItem, uri: str) -> None:
             uris_played.append(uri)
-            logger.info(">>> [CICLO %d] Fuente seleccionada: %s", len(uris_played), uri)
+            logger.info(">>> [CYCLE %d] Source selected: %s", len(uris_played), uri)
             # Con el cambio sin huecos (about-to-finish), la URI del ciclo siguiente se decide
             # unos segundos antes del final del actual, asi que el archivo descargado puede
             # aparecer uno o dos ciclos despues del primero.
             if uri.startswith("file://") or len(uris_played) >= MAX_CYCLES:
-                logger.info("Simulacion completada. Deteniendo...")
+                logger.info("Simulation finished. Stopping...")
                 GLib.idle_add(player.stop)
 
         player = MolcajetePlayer(
@@ -170,12 +170,12 @@ def run_simulation(sink_type: str = "auto") -> int:
         finally:
             httpd.shutdown()
 
-        logger.info("Resumen de URIs reproducidas por orden: %s", uris_played)
+        logger.info("URIs played, in order: %s", uris_played)
         switched = any(uri.startswith("file://") for uri in uris_played[1:])
         if uris_played and uris_played[0].startswith("http://") and switched:
-            logger.info("EXITO: Se inicio reproduciendo el stream y se conmuto al archivo en disco tras descargar de S3.")
+            logger.info("SUCCESS: playback started from the stream and switched to the file on disk after the S3 download.")
             return 0
-        logger.error("FALLO: No se produjo la transicion esperada de http:// a file://")
+        logger.error("FAILURE: the expected switch from http:// to file:// did not happen")
         return 1
 
 

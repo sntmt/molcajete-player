@@ -14,10 +14,10 @@ def load_playlist_from_string(content: str) -> Playlist:
     try:
         data = json.loads(content)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Error al decodificar la fuente JSON: {exc}") from exc
+        raise ValueError(f"Could not decode the JSON source: {exc}") from exc
 
     if not isinstance(data, dict):
-        raise ValueError("El objeto raiz del JSON debe ser un diccionario.")
+        raise ValueError("The JSON root must be an object.")
 
     return Playlist.from_dict(data)
 
@@ -40,7 +40,7 @@ def load_playlist_from_file(
     """
     file_path = Path(path).expanduser()
     if not file_path.is_file():
-        raise FileNotFoundError(f"No se encontro el archivo de metadatos: {file_path}")
+        raise FileNotFoundError(f"Metadata file not found: {file_path}")
 
     playlist = load_playlist_from_string(file_path.read_text(encoding="utf-8"))
     if media_root is not None:

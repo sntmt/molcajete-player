@@ -150,17 +150,17 @@ PYTHONPATH=src python3 examples/simulate_mux_s3_switch.py --sink fakesink
 
 ### Trazas esperadas en consola
 ```text
-INFO simulacion: Generando videos de prueba con GStreamer (~3s cada uno)...
-INFO molcajete_player.player: Reproduciendo elemento [1/1] 'Video Usuario (Mux Stream -> S3 Disco Seguro)' (demo-mux-s3) -> URI: http://127.0.0.1:xxxxx/mux/stream.mp4
-INFO simulacion: >>> [CICLO 1] Fuente seleccionada: http://127.0.0.1:xxxxx/mux/stream.mp4
-INFO molcajete_player.downloader: Buscando rendition en S3 para 'demo-mux-s3' (intento 1/10): http://127.0.0.1:xxxxx/s3/rendition.mp4?<redacted>
-INFO molcajete_player.downloader: Rendition de 'demo-mux-s3' aun no disponible en S3 (HTTP 404). Reintentando en 1.0s...
-INFO molcajete_player.downloader: Buscando rendition en S3 para 'demo-mux-s3' (intento 2/10): http://127.0.0.1:xxxxx/s3/rendition.mp4?<redacted>
-INFO molcajete_player.downloader: Descarga de rendition S3 completada y verificada para 'demo-mux-s3' -> /tmp/molcajete_sim_.../device_cache/demo-mux-s3_<sha16>.mp4 (sha256=<sha16>). Se usara el archivo en disco en la siguiente reproduccion.
-INFO molcajete_player.player: Precargando siguiente elemento 'demo-mux-s3' -> file:///tmp/molcajete_sim_.../device_cache/demo-mux-s3_<sha16>.mp4
-INFO molcajete_player.player: Reproduciendo elemento [1/1] 'Video Usuario (Mux Stream -> S3 Disco Seguro)' (demo-mux-s3) -> URI: file:///tmp/molcajete_sim_.../device_cache/demo-mux-s3_<sha16>.mp4
-INFO simulacion: >>> [CICLO 2] Fuente seleccionada: file:///tmp/molcajete_sim_.../device_cache/demo-mux-s3_<sha16>.mp4
-INFO simulacion: Simulacion completada. Deteniendo...
+INFO simulation: Generating test videos with GStreamer (~3s each)...
+INFO molcajete_player.player: Playing item [1/1] 'Video Usuario (Mux Stream -> S3 Disco Seguro)' (demo-mux-s3) -> URI: http://127.0.0.1:xxxxx/mux/stream.mp4
+INFO simulation: >>> [CYCLE 1] Source selected: http://127.0.0.1:xxxxx/mux/stream.mp4
+INFO molcajete_player.downloader: Downloading rendition for 'demo-mux-s3' (attempt 1/10): http://127.0.0.1:xxxxx/s3/rendition.mp4?<redacted>
+INFO molcajete_player.downloader: Rendition for 'demo-mux-s3' not available yet (HTTP 404). Retrying in 1.0s...
+INFO molcajete_player.downloader: Downloading rendition for 'demo-mux-s3' (attempt 2/10): http://127.0.0.1:xxxxx/s3/rendition.mp4?<redacted>
+INFO molcajete_player.downloader: Rendition download completed and verified for 'demo-mux-s3' -> /tmp/molcajete_sim_.../device_cache/demo-mux-s3_<sha16>.mp4 (sha256=<sha16>). The file on disk will be used the next time it plays.
+INFO molcajete_player.player: Preloading next item 'demo-mux-s3' -> file:///tmp/molcajete_sim_.../device_cache/demo-mux-s3_<sha16>.mp4
+INFO molcajete_player.player: Playing item [1/1] 'Video Usuario (Mux Stream -> S3 Disco Seguro)' (demo-mux-s3) -> URI: file:///tmp/molcajete_sim_.../device_cache/demo-mux-s3_<sha16>.mp4
+INFO simulation: >>> [CYCLE 2] Source selected: file:///tmp/molcajete_sim_.../device_cache/demo-mux-s3_<sha16>.mp4
+INFO simulation: Simulation finished. Stopping...
 INFO simulacion: Resumen de URIs reproducidas por orden: [...]
 INFO simulacion: EXITO: Se inicio reproduciendo el stream y se conmuto al archivo en disco tras descargar de S3.
 ```

@@ -38,7 +38,7 @@ def validate_download_url(
     hostname = (parsed.hostname or "").lower()
 
     if not hostname:
-        raise ValueError(f"URL de descarga invalida (sin host): {redact_url_for_log(url)}")
+        raise ValueError(f"Invalid download URL (no host): {redact_url_for_log(url)}")
 
     if scheme == "https":
         return
@@ -49,11 +49,11 @@ def validate_download_url(
         if allow_loopback_http and hostname in ("127.0.0.1", "localhost", "::1"):
             return
         raise ValueError(
-            f"URL de descarga insegura rechazada (se requiere HTTPS en modo kiosko): {redact_url_for_log(url)}"
+            f"Insecure download URL rejected (HTTPS required in kiosk mode): {redact_url_for_log(url)}"
         )
 
     raise ValueError(
-        f"Esquema de URL no permitido '{scheme}' en URL de descarga: {redact_url_for_log(url)}"
+        f"URL scheme '{scheme}' not allowed in download URL: {redact_url_for_log(url)}"
     )
 
 
@@ -77,7 +77,7 @@ class _ValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
         new_scheme = urllib.parse.urlsplit(newurl).scheme.lower()
         if old_scheme == "https" and new_scheme != "https" and not self.allow_insecure_http:
             raise UnsafeRedirectError(
-                f"Redireccion de https a {new_scheme} rechazada: {redact_url_for_log(newurl)}"
+                f"Redirect from https to {new_scheme} rejected: {redact_url_for_log(newurl)}"
             )
         try:
             validate_download_url(newurl, allow_insecure_http=self.allow_insecure_http)
@@ -182,7 +182,7 @@ class MediaDownloader:
         try:
             target_path = self.resolve_target_path(item)
         except ValueError as exc:
-            logger.error("Ruta de cache rechazada para '%s': %s", item.id, exc)
+            logger.error("Cache path rejected for '%s': %s", item.id, exc)
             return None
 
         if not target_path.is_file():
@@ -191,7 +191,7 @@ class MediaDownloader:
             return target_path
 
         logger.warning(
-            "Archivo en cache para '%s' (%s) no supero la verificacion SHA-256. Eliminando para re-descargar...",
+            "Cached file for '%s' (%s) failed SHA-256 verification. Deleting it to download again...",
             item.id,
             target_path,
         )
@@ -218,7 +218,7 @@ class MediaDownloader:
                 allow_insecure_http=self.allow_insecure_http,
             )
         except ValueError as exc:
-            logger.error("Descarga rechazada para '%s': %s", item.id, exc)
+            logger.error("Download rejected for '%s': %s", item.id, exc)
             return False
 
         target_path = self.prepare(item)
@@ -254,13 +254,13 @@ class MediaDownloader:
         """Rechaza la descarga si supera ``max_bytes`` o dejaria menos de ``min_free_bytes`` libres."""
         if content_length is not None and self.max_bytes is not None and content_length > self.max_bytes:
             raise _DownloadAborted(
-                f"el tamano anunciado ({content_length} bytes) supera el maximo permitido ({self.max_bytes} bytes)"
+                f"announced size ({content_length} bytes) exceeds the allowed maximum ({self.max_bytes} bytes)"
             )
         free_bytes = shutil.disk_usage(self.cache_dir).free
         needed = (content_length or 0) + self.min_free_bytes
         if free_bytes < needed:
             raise _DownloadAborted(
-                f"espacio libre insuficiente en {self.cache_dir} ({free_bytes} bytes libres, se requieren {needed})"
+                f"not enough free space in {self.cache_dir} ({free_bytes} bytes free, {needed} required)"
             )
 
     def _download_worker(self, item: MediaItem, target_path: Path) -> None:
@@ -279,7 +279,7 @@ class MediaDownloader:
             attempt += 1
             try:
                 logger.info(
-                    "Buscando rendition en S3 para '%s' (intento %d/%d): %s",
+                    "Downloading rendition for '%s' (attempt %d/%d): %s",
                     item.id,
                     attempt,
                     self.max_retries,
@@ -305,7 +305,7 @@ class MediaDownloader:
                             written += len(chunk)
                             if self.max_bytes is not None and written > self.max_bytes:
                                 raise _DownloadAborted(
-                                    f"la descarga supero el maximo permitido ({self.max_bytes} bytes)"
+                                    f"download exceeded the allowed maximum ({self.max_bytes} bytes)"
                                 )
                             hasher.update(chunk)
                             out_file.write(chunk)
@@ -318,8 +318,8 @@ class MediaDownloader:
                 if item.sha256 and not hmac.compare_digest(calculated_sha256, item.sha256):
                     self._remove_file(part_path)
                     logger.error(
-                        "Error de integridad SHA-256 al descargar '%s': esperado %s, calculado %s. "
-                        "El archivo descargado fue descartado por seguridad.",
+                        "SHA-256 integrity error downloading '%s': expected %s, got %s. "
+                        "The downloaded file was discarded.",
                         item.id,
                         item.sha256,
                         calculated_sha256,
@@ -331,8 +331,8 @@ class MediaDownloader:
                 with self._lock:
                     self._verified[str(target_path)] = (stat_result.st_size, stat_result.st_mtime_ns)
                 logger.info(
-                    "Descarga de rendition S3 completada y verificada para '%s' -> %s (sha256=%s). "
-                    "Se usara el archivo en disco en la siguiente reproduccion.",
+                    "Rendition download completed and verified for '%s' -> %s (sha256=%s). "
+                    "The file on disk will be used the next time it plays.",
                     item.id,
                     target_path,
                     calculated_sha256[:16],
@@ -343,24 +343,24 @@ class MediaDownloader:
 
             except _DownloadAborted as exc:
                 self._remove_file(part_path)
-                logger.error("Descarga de '%s' cancelada: %s.", item.id, exc)
+                logger.error("Download of '%s' cancelled: %s.", item.id, exc)
                 return
             except UnsafeRedirectError as exc:
                 self._remove_file(part_path)
-                logger.error("Descarga de '%s' cancelada por redireccion insegura: %s", item.id, exc.reason)
+                logger.error("Download of '%s' cancelled by an unsafe redirect: %s", item.id, exc.reason)
                 return
             except urllib.error.HTTPError as exc:
                 self._remove_file(part_path)
                 if exc.code in _RETRYABLE_HTTP_CODES:
                     logger.info(
-                        "Rendition de '%s' aun no disponible en S3 (HTTP %d). Reintentando en %.1fs...",
+                        "Rendition for '%s' not available yet (HTTP %d). Retrying in %.1fs...",
                         item.id,
                         exc.code,
                         self.retry_interval,
                     )
                 else:
                     logger.warning(
-                        "Error HTTP %d descargando rendition de '%s' desde S3 (%s): %s",
+                        "HTTP error %d downloading rendition for '%s' (%s): %s",
                         exc.code,
                         item.id,
                         safe_log_url,
@@ -370,7 +370,7 @@ class MediaDownloader:
             except Exception as exc:
                 self._remove_file(part_path)
                 logger.warning(
-                    "Fallo temporal descargando rendition de '%s' desde S3 (%s). Reintentando en %.1fs...",
+                    "Temporary failure downloading rendition for '%s' (%s). Retrying in %.1fs...",
                     item.id,
                     exc,
                     self.retry_interval,
@@ -381,7 +381,7 @@ class MediaDownloader:
 
         if attempt >= self.max_retries and not target_path.is_file():
             logger.error(
-                "Se agotaron los reintentos (%d) esperando el rendition en S3 para '%s'.",
+                "Gave up after %d attempts waiting for the rendition of '%s'.",
                 self.max_retries,
                 item.id,
             )
@@ -430,7 +430,7 @@ class MediaDownloader:
             self._remove_file(entry)
             removed += 1
         if removed:
-            logger.info("Se eliminaron %d archivos obsoletos de la cache %s.", removed, self.cache_dir)
+            logger.info("Removed %d stale files from cache %s.", removed, self.cache_dir)
         return removed
 
     def clear_cache(self) -> int:

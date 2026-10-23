@@ -54,7 +54,7 @@ def parse_bool(value: Any, field_name: str) -> bool:
         return value
     if isinstance(value, str) and value.strip().lower() in ("true", "false"):
         return value.strip().lower() == "true"
-    raise ValueError(f"El campo '{field_name}' debe ser booleano (true/false); se recibio {value!r}.")
+    raise ValueError(f"Field '{field_name}' must be a boolean (true/false); got {value!r}.")
 
 
 @dataclass
@@ -74,16 +74,16 @@ class MediaItem:
 
     def __post_init__(self) -> None:
         if not str(self.id).strip():
-            raise ValueError("El identificador 'id' del elemento multimedia no puede estar vacio.")
+            raise ValueError("The media item 'id' cannot be empty.")
 
         if not isinstance(self.metadata, dict):
-            raise ValueError(f"El campo 'metadata' del elemento '{self.id}' debe ser un objeto JSON.")
+            raise ValueError(f"Field 'metadata' of item '{self.id}' must be a JSON object.")
 
         if self.local_path is not None:
             raw_parts = Path(self.local_path).parts
             if ".." in raw_parts:
                 raise ValueError(
-                    f"Ruta local insegura en '{self.id}': no se permite navegacion de directorios ('..')."
+                    f"Unsafe local path in '{self.id}': directory traversal ('..') is not allowed."
                 )
 
         if self.sha256 is not None:
@@ -92,7 +92,7 @@ class MediaItem:
                 normalized_hash = normalized_hash.split(":", 1)[1].strip()
             if not _SHA256_RE.match(normalized_hash):
                 raise ValueError(
-                    f"El campo 'sha256' del elemento '{self.id}' debe ser un hash hexadecimal valido de 64 caracteres."
+                    f"Field 'sha256' of item '{self.id}' must be a valid 64-character hex hash."
                 )
             self.sha256 = normalized_hash
 
@@ -117,7 +117,7 @@ class MediaItem:
         target_path = (base_dir / filename).resolve()
         if not target_path.is_relative_to(base_dir):
             raise ValueError(
-                f"La ruta resuelta '{target_path}' escapa del directorio de cache permitido '{base_dir}'."
+                f"Resolved path '{target_path}' escapes the allowed cache directory '{base_dir}'."
             )
         return target_path
 
@@ -160,7 +160,7 @@ class MediaItem:
         resolved = candidate.resolve()
         if not resolved.is_relative_to(root):
             raise ValueError(
-                f"Ruta local no permitida en '{self.id}': '{self.local_path}' queda fuera de '{root}'."
+                f"Local path not allowed in '{self.id}': '{self.local_path}' is outside '{root}'."
             )
         self.local_path = str(resolved)
 
@@ -201,7 +201,7 @@ class MediaItem:
             return Path(self.local_path).expanduser().resolve().as_uri()
 
         raise ValueError(
-            f"El elemento multimedia '{self.id}' no dispone de local_path ni remote_url valido."
+            f"Media item '{self.id}' has no valid local_path or remote_url."
         )
 
     @classmethod
@@ -216,9 +216,9 @@ class MediaItem:
                 objeto o si ``local_path`` contiene ``..``.
         """
         if not isinstance(data, dict):
-            raise ValueError(f"Cada elemento multimedia debe ser un objeto JSON; se recibio {type(data).__name__}.")
+            raise ValueError(f"Each media item must be a JSON object; got {type(data).__name__}.")
         if data.get("id") is None or data.get("title") is None:
-            raise ValueError("Cada elemento multimedia debe contener al menos 'id' y 'title'.")
+            raise ValueError("Each media item must have at least 'id' and 'title'.")
 
         metadata = data.get("metadata")
         return cls(
@@ -265,17 +265,17 @@ class Playlist:
                 es una lista, si algun elemento es invalido o si hay ``id`` duplicados.
         """
         if "name" not in data:
-            raise ValueError("La lista de reproduccion debe especificar un campo 'name'.")
+            raise ValueError("The playlist must have a 'name' field.")
 
         items_raw = data.get("items", [])
         if not isinstance(items_raw, list):
-            raise ValueError("El campo 'items' debe ser una lista de elementos multimedia.")
+            raise ValueError("Field 'items' must be a list of media items.")
 
         items = [MediaItem.from_dict(item) for item in items_raw]
         seen_ids = set()
         for item in items:
             if item.id in seen_ids:
-                raise ValueError(f"El identificador '{item.id}' esta duplicado en la lista de reproduccion.")
+                raise ValueError(f"Item id '{item.id}' is duplicated in the playlist.")
             seen_ids.add(item.id)
 
         return cls(
