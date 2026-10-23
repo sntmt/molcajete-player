@@ -191,15 +191,19 @@ class TestEnsureDownloading(_DownloaderTestCase):
     def test_deduplicates_threads_for_same_item(self):
         downloader = self.make_downloader()
         release = threading.Event()
+        entered = threading.Event()
         calls = {"n": 0}
 
         def blocking_open(req):
             calls["n"] += 1
+            entered.set()
             release.wait(2)
             return _response(self.payload, len(self.payload))
 
         with patch.object(downloader, "_open", side_effect=blocking_open):
             self.assertTrue(downloader.ensure_downloading(self.item))
+            # Sin esperar, stop() podia llegar antes de que el hilo abriera la descarga (test intermitente).
+            self.assertTrue(entered.wait(2))
             self.assertTrue(downloader.ensure_downloading(self.item))
             release.set()
             downloader.stop(join_timeout=2)
